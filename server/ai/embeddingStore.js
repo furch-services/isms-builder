@@ -136,4 +136,19 @@ async function reindexAll() {
 /** Number of indexed documents. */
 function count() { return Object.keys(_index).length }
 
-module.exports = { indexDoc, removeDoc, search, reindexAll, count }
+const _jsonExports = { indexDoc, removeDoc, search, reindexAll, count }
+
+// Dual-mode, same pattern as server/rbacStore.js: under STORAGE_BACKEND
+// sqlite/mariadb/postgres, the search index is persisted in the `embeddings`
+// table instead of a local JSON file — otherwise each pod would only ever
+// see documents indexed by itself, and search results would depend on which
+// pod happened to answer the request.
+const STORAGE_BACKEND = (process.env.STORAGE_BACKEND || 'json').toLowerCase()
+
+if (STORAGE_BACKEND !== 'json') {
+  const _knex = require('../db/stores/embeddingStore')
+  _knex.init().catch(e => console.error('[embeddingStore] Knex init:', e.message))
+  module.exports = _knex
+} else {
+  module.exports = _jsonExports
+}

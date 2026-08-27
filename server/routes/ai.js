@@ -29,7 +29,7 @@ router.get('/api/ai/search', requireAuth, async (req, res) => {
   if (aiEnabled()) {
     try {
       const r = await fetch(ollamaUrl() + '/api/tags', { signal: AbortSignal.timeout(1500) })
-      semantic = r.ok && embeddingStore.count() > 0
+      semantic = r.ok && (await embeddingStore.count()) > 0
     } catch {}
   }
 
@@ -78,7 +78,7 @@ router.get('/api/ai/status', requireAuth, async (req, res) => {
       ollamaOk = r.ok
     } catch {}
   }
-  const indexed = embeddingStore.count()
+  const indexed = await embeddingStore.count()
   res.json({
     enabled,
     ollama:   ollamaOk,

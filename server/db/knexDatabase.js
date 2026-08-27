@@ -400,6 +400,20 @@ const TABLES = {
     t.index('distribution_id', 'idx_pack_dist')
     t.index('token', 'idx_pack_token')
   },
+
+  // Semantic search index (embeddingStore) — one row per indexed document.
+  // Lets multiple pods share the same search index instead of each pod only
+  // ever seeing its own in-memory/JSON-file snapshot (see server/ai/embeddingStore.js).
+  embeddings(t) {
+    t.string('id', 200).primary()       // doc.id from the caller (risk ID, template ID, ...)
+    t.string('doc_type', 60).notNullable().defaultTo('')
+    t.string('title', 512).notNullable().defaultTo('')
+    t.text('preview').notNullable().defaultTo('')   // short excerpt shown in search results
+    t.string('url', 256).nullable()
+    t.text('vector').notNullable()      // JSON array of floats, stored as text
+    t.string('updated_at', 30).notNullable()
+    t.index('doc_type', 'idx_embeddings_type')
+  },
 }
 
 async function initSchema(k) {
