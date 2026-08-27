@@ -176,8 +176,8 @@ function deleteUser(username) {
   return true
 }
 
-module.exports = {
-  init: () => { USERS = loadUsers() },
+const _jsonExports = {
+  init: async () => { USERS = loadUsers() },
   verifyPassword,
   setPasswordHash,
   getUserSections,
@@ -192,3 +192,22 @@ module.exports = {
   updateUser,
   deleteUser
 }
+
+// Dual-mode, same pattern as server/db/riskStore.js etc.: under STORAGE_BACKEND
+// sqlite/mariadb/postgres, persistence is delegated entirely to
+// server/db/stores/rbacStore.js (Knex, against the already-existing
+// rbac_users table) — otherwise every pod would only ever see its own JSON
+// snapshot, and password/role changes on one pod would stay invisible to
+// every other pod until it restarts.
+//
+// Unlike the other Knex stores, `init()` is deliberately NOT triggered here
+// at require() time: server/index.js already calls `rbacStore.init()`
+// explicitly once (around line 77). An extra call here would race with that
+// one — both would see an empty table at startup and both would try to
+// insert the seed (admin/alice/bob) concurrently, and the second attempt
+// would fail with a UNIQUE constraint error on `username`.
+const STORAGE_BACKEND = (process.env.STORAGE_BACKEND || 'json').toLowerCase()
+
+module.exports = STORAGE_BACKEND !== 'json'
+  ? require('./db/stores/rbacStore')
+  : _jsonExports

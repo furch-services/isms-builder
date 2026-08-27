@@ -21,7 +21,7 @@ const path = require('path')
 const BACKEND = (process.env.DB_STORES_TEST_BACKEND || 'sqlite').toLowerCase()
 process.env.STORAGE_BACKEND = BACKEND
 
-const { createTestDataDir, removeTestDataDir } = require('./setup/testEnv')
+const { createTestDataDir, removeTestDataDir, seedDbBackendTestUsers } = require('./setup/testEnv')
 const { loginAs, authedGet, authedPost, authedPut, authedDelete } = require('./setup/authHelper')
 
 describe(`DB-Backend-Routen [${BACKEND}] — #70 Regression`, () => {
@@ -34,6 +34,10 @@ describe(`DB-Backend-Routen [${BACKEND}] — #70 Regression`, () => {
     process.env.NODE_ENV   = 'test'
     app = require('../server/index.js')
     await app.bootstrap?.()
+    // rbac_users.json (written by createTestDataDir) is no longer read under
+    // a SQL backend (rbacStore dual-mode fix) — the "contentowner" test role
+    // must therefore also be created in the DB.
+    await seedDbBackendTestUsers()
 
     adminCookie        = await loginAs(app, 'admin')
     contentownerCookie = await loginAs(app, 'contentowner')

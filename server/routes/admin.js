@@ -87,7 +87,7 @@ router.get('/dashboard', requireAuth, authorize('reader'), async (req, res) => {
 
 // ── Admin Users ──
 router.get('/admin/users', requireAuth, authorize('admin'), async (req, res) => {
-  const all = require('../rbacStore').getAllUsers()
+  const all = await require('../rbacStore').getAllUsers()
   if (req.role === 'admin') {
     res.json(all)
   } else {
@@ -98,26 +98,26 @@ router.get('/admin/users', requireAuth, authorize('admin'), async (req, res) => 
 })
 router.get('/admin/user/:username', requireAuth, authorize('admin'), async (req, res) => {
   const { username } = req.params
-  const all = require('../rbacStore').getAllUsers()
+  const all = await require('../rbacStore').getAllUsers()
   const target = all.find(u => u.username === username)
   if (!target) return res.status(404).json({ error: 'Not found' })
   if (req.role !== 'admin' && (target.domain !== req.domain)) {
     return res.status(403).json({ error: 'Forbidden' })
   }
-  const sections = require('../rbacStore').getUserSections(username) || []
+  const sections = await require('../rbacStore').getUserSections(username) || []
   res.json({ username, sections, domain: target.domain, role: target.role })
 })
 router.put('/admin/user/:username', requireAuth, authorize('admin'), async (req, res) => {
   const { username } = req.params
   const { sections } = req.body
   if (!Array.isArray(sections)) return res.status(400).json({ error: 'sections must be an array' })
-  const all = require('../rbacStore').getAllUsers()
+  const all = await require('../rbacStore').getAllUsers()
   const target = all.find(u => u.username === username)
   if (!target) return res.status(404).json({ error: 'Not found' })
   if (req.role !== 'admin' && (target.domain !== req.domain)) {
     return res.status(403).json({ error: 'Forbidden' })
   }
-  const updated = require('../rbacStore').setUserSections(username, sections)
+  const updated = await require('../rbacStore').setUserSections(username, sections)
   res.json(updated)
 })
 
@@ -149,7 +149,7 @@ router.put('/admin/users/:username', requireAuth, authorize('admin'), async (req
 router.delete('/admin/users/:username', requireAuth, authorize('admin'), async (req, res) => {
   const { username } = req.params
   if (username === req.user) return res.status(400).json({ error: 'Eigenen Account nicht löschbar' })
-  const ok = require('../rbacStore').deleteUser(username)
+  const ok = await require('../rbacStore').deleteUser(username)
   if (!ok) return res.status(404).json({ error: 'Not found' })
   await auditStore.append({ user: req.user, action: 'delete', resource: 'user', resourceId: username })
   res.json({ deleted: true })
@@ -455,11 +455,11 @@ router.post('/admin/demo-reset', requireAuth, authorize('admin'), async (req, re
 
     // Reset users: delete all except admin, reset admin to adminpass with no 2FA
     const rbac = require('../rbacStore')
-    for (const u of rbac.getAllUsers()) {
-      if (u.username !== 'admin') rbac.deleteUser(u.username)
+    for (const u of await rbac.getAllUsers()) {
+      if (u.username !== 'admin') await rbac.deleteUser(u.username)
     }
     await rbac.setPasswordHash('admin', 'adminpass')
-    rbac.setUserTotpSecret('admin', null)
+    await rbac.setUserTotpSecret('admin', null)
 
     // Write demo-reset flag; remove demo-lang flag so next admin login can pick language again
     fs.writeFileSync(FLAG_FILE, nowISO())
@@ -550,9 +550,9 @@ router.post('/admin/demo-import', requireAuth, authorize('admin'), express.json(
       { username: 'bob',   email: 'bob@hr.example',   domain: 'HR',  role: 'reader',    functions: [], password: 'bobpass',   sections: [] },
     ]
     for (const du of demoUsers) {
-      if (rbac.getUserByUsername(du.username)) rbac.deleteUser(du.username)
+      if (await rbac.getUserByUsername(du.username)) await rbac.deleteUser(du.username)
       await rbac.createUser({ username: du.username, email: du.email, domain: du.domain, role: du.role, functions: du.functions, password: du.password })
-      rbac.setUserTotpSecret(du.username, null)
+      await rbac.setUserTotpSecret(du.username, null)
     }
 
     // Remove demo-reset flag if present
@@ -648,9 +648,9 @@ router.post('/admin/demo-load-bundle', requireAuth, authorize('admin'), express.
       { username: 'bob',   email: 'bob@hr.example',   domain: 'HR', role: 'reader',   functions: [], password: 'bobpass',   sections: [] },
     ]
     for (const du of demoUsers) {
-      if (rbac.getUserByUsername(du.username)) rbac.deleteUser(du.username)
+      if (await rbac.getUserByUsername(du.username)) await rbac.deleteUser(du.username)
       await rbac.createUser({ username: du.username, email: du.email, domain: du.domain, role: du.role, functions: du.functions, password: du.password })
-      rbac.setUserTotpSecret(du.username, null)
+      await rbac.setUserTotpSecret(du.username, null)
     }
 
     // Re-seed guidance docs (architecture, demo-overview, role guides, soa-guide, policy-guide)

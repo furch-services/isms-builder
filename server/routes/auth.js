@@ -41,10 +41,10 @@ router.post('/login', async (req, res) => {
 
   let userRaw = null
   if (email) {
-    const uname = rbac.getUsernameByEmail(email)
-    if (uname) userRaw = rbac.getUserByUsername(uname)
+    const uname = await rbac.getUsernameByEmail(email)
+    if (uname) userRaw = await rbac.getUserByUsername(uname)
   } else if (usernameField) {
-    userRaw = rbac.getUserByUsername(usernameField)
+    userRaw = await rbac.getUserByUsername(usernameField)
   }
   if (!userRaw) {
     return res.status(401).json({ error: 'Invalid credentials' })
@@ -101,11 +101,11 @@ router.post('/login', async (req, res) => {
 })
 
 // Who am I
-router.get('/whoami', (req, res) => {
+router.get('/whoami', async (req, res) => {
   const sess = getSessionFromReq(req)
   if (!sess) return res.status(401).json({ error: 'Not authenticated' })
   const rbac = require('../rbacStore')
-  const user = rbac.getUserByUsername(sess.username)
+  const user = await rbac.getUserByUsername(sess.username)
   const has2FA = !!(user && user.totpSecret && user.totpSecret.length > 0 && user.totpVerified === true)
   // functions: JWT-Payload ist Source of Truth; falls user-Record neuere Funktionen hat, diese vorziehen
   const functions = (user && user.functions) ? user.functions : (sess.functions || [])
@@ -154,14 +154,14 @@ try {
   router.post('/2fa/verify', requireAuth, async (req, res) => {
     const { token } = req.body || {}
     const rbac = require('../rbacStore')
-    const user = rbac.getUserByUsername(req.user)
+    const user = await rbac.getUserByUsername(req.user)
     if (!user || !user.totpSecret) {
       return res.status(400).json({ error: 'Kein 2FA-Secret gefunden. Bitte zuerst /2fa/setup aufrufen.' })
     }
     if (!verifyTotp(user.totpSecret, token)) {
       return res.status(401).json({ error: 'Ungültiger Code' })
     }
-    rbac.confirmTotpVerified(req.user)
+    await rbac.confirmTotpVerified(req.user)
     res.json({ ok: true, message: '2FA erfolgreich aktiviert' })
   })
 

@@ -260,9 +260,9 @@ function checkDeletionLog(cfg) {
  * Gibt deduplizierte E-Mail-Adressen aller Nutzer mit einer bestimmten Funktion zurück.
  * Fallback: Org-Setting-Adresse, falls kein Nutzer mit dieser Funktion gefunden wird.
  */
-function getRecipients(fn, fallbackEmail) {
+async function getRecipients(fn, fallbackEmail) {
   try {
-    const users = rbacStore.getUsersByFunction(fn)
+    const users = await rbacStore.getUsersByFunction(fn)
     const emails = users.map(u => u.email).filter(Boolean)
     if (emails.length) return [...new Set(emails)]
   } catch {}
@@ -283,9 +283,9 @@ async function runDailyChecks() {
   const gdpoSettings = settings.gdpoSettings || {}
 
   // Empfänger nach Funktion — mit Org-Setting als Fallback
-  const cisoRecipients  = getRecipients('ciso',  settings.cisoSettings?.escalationEmail || '')
-  const dsoRecipients   = getRecipients('dso',   '')
-  const adminRecipients = getRecipients('admin_notify', cfg.adminEmail || '')
+  const cisoRecipients  = await getRecipients('ciso',  settings.cisoSettings?.escalationEmail || '')
+  const dsoRecipients   = await getRecipients('dso',   '')
+  const adminRecipients = await getRecipients('admin_notify', cfg.adminEmail || '')
 
   // Admin-E-Mail immer als letzten Fallback für alle Digest-Typen hinzufügen
   if (cfg.adminEmail && !adminRecipients.includes(cfg.adminEmail)) adminRecipients.push(cfg.adminEmail)

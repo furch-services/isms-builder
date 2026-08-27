@@ -74,7 +74,7 @@ app.use('/ui', (req, res, next) => {
 
 const storage = require('./storage')
 const rbacStore = require('./rbacStore')
-rbacStore.init()
+rbacStore.init().catch(e => console.error('[rbacStore] init:', e.message))
 
 // Fallback: provide a minimal setUserTotpSecret if not present in rbacStore
 try {
