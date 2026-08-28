@@ -7,6 +7,7 @@ onto a Kubernetes cluster, including a bundled PostgreSQL database by default.
 ## Quick start
 
 ```bash
+helm repo add groundhog2k https://groundhog2k.github.io/helm-charts/
 helm dependency build charts/isms-builder
 helm install my-isms charts/isms-builder \
   --namespace isms --create-namespace

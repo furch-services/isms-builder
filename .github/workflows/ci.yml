@@ -99,7 +99,9 @@ jobs:
           version: 'v3.16.4'
 
       - name: Fetch chart dependencies
-        run: helm dependency build charts/isms-builder
+        run: |
+          helm repo add groundhog2k https://groundhog2k.github.io/helm-charts/
+          helm dependency build charts/isms-builder
 
       - name: Lint
         run: helm lint charts/isms-builder

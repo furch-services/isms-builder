@@ -316,6 +316,7 @@ A Helm chart at [`charts/isms-builder/`](charts/isms-builder/) deploys the app t
 everything it needs, including a bundled PostgreSQL database by default:
 
 ```bash
+helm repo add groundhog2k https://groundhog2k.github.io/helm-charts/
 helm dependency build charts/isms-builder
 helm install my-isms charts/isms-builder --namespace isms --create-namespace
 ```
