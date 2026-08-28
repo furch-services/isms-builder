@@ -17,7 +17,9 @@ data:
   {{- if .Values.env.publicUrl }}
   PUBLIC_URL: {{ .Values.env.publicUrl | quote }}
   {{- end }}
-  {{- if ne .Values.storageBackend "json" }}
+  {{- /* json and sqlite are both file-based and need no DB_* wiring at all —
+     sqlite persists straight into the mounted PVC, no server/credentials. */}}
+  {{- if or (eq .Values.storageBackend "postgres") (eq .Values.storageBackend "mariadb") }}
   DB_HOST: {{ include "isms-builder.dbHost" . | quote }}
   DB_PORT: {{ include "isms-builder.dbPort" . | quote }}
   DB_NAME: {{ include "isms-builder.dbName" . | quote }}

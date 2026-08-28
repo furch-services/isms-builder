@@ -76,7 +76,14 @@ database:
 #    state. ReadWriteMany so more than one replica can share it.
 persistence:
   enabled: true
-  accessMode: ReadWriteMany
+  # ReadWriteOnce by default — the default StorageClass on EKS (gp2/gp3),
+  # GKE (standard/pd-*), and AKS (managed-csi) is RWO-only, and replicaCount
+  # defaults to 1, so RWO is all a fresh install actually needs. When
+  # replicaCount > 1, templates/pvc.yaml automatically requests
+  # ReadWriteMany instead (needs an RWX-capable StorageClass/CSI driver —
+  # e.g. EFS-CSI/Filestore-CSI/Azure Files-CSI — set storageClassName below
+  # if the cluster's default StorageClass isn't RWX-capable).
+  accessMode: ReadWriteOnce
   size: 10Gi
   storageClassName: ""
   # Set to reuse an existing PVC instead of creating a new one.
@@ -147,10 +154,15 @@ auth:
 
 env:
   jwtExpiresIn: 8h
-  # Set to "1" when using the Ingress above (TLS terminated there) so the app
-  # trusts X-Forwarded-* headers for correct audit-log IPs and confirmation
-  # link hostnames. Leave empty when using tls.inPod instead.
-  trustProxy: "1"
+  # Empty (i.e. "do not trust any proxy") by default, matching the app's own
+  # secure default (server/index.js / .env.example) — without a real reverse
+  # proxy in front, trusting X-Forwarded-* lets a direct client forge its own
+  # IP (recorded in the policy-acknowledgement audit trail) and Host header
+  # (used to build confirmation-email links). Set to "1" ONLY once
+  # ingress.enabled is true (the Ingress controller is then the one real hop
+  # in front of the pod, terminating TLS itself). Leave empty when using
+  # tls.inPod instead, or when reaching the app via kubectl port-forward.
+  trustProxy: ""
   # Overrides host/protocol detection entirely — set this to your externally
   # visible URL (e.g. https://isms.example.com) if it differs from what
   # trustProxy alone would infer.

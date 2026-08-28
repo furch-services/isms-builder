@@ -37,7 +37,8 @@ spec:
                 secretKeyRef:
                   name: {{ include "isms-builder.jwtSecretName" . }}
                   key: JWT_SECRET
-            {{- if ne .Values.storageBackend "json" }}
+            {{- /* json and sqlite need no DB credentials at all (see configmap.yaml). */}}
+            {{- if or (eq .Values.storageBackend "postgres") (eq .Values.storageBackend "mariadb") }}
             - name: DB_PASS
               valueFrom:
                 secretKeyRef:
@@ -76,17 +77,28 @@ spec:
           # No /health endpoint is currently exposed by the app (see
           # docs/architecture — tracked as a follow-up in ROADMAP.md), so
           # probes reuse the same path the existing Docker HEALTHCHECK
-          # already polls.
+          # already polls. Scheme must match how the app actually serves
+          # traffic: HTTPS-only once tls.inPod.enabled injects SSL_CERT_FILE/
+          # SSL_KEY_FILE (server/index.js's startListener() switches the
+          # whole listener to https.createServer, there is no HTTP fallback
+          # port) — kubelet's HTTPS probe client skips certificate
+          # verification, so the self-signed/pod cert is fine here.
           startupProbe:
             httpGet:
               path: /ui/login.html
               port: http
+              {{- if .Values.tls.inPod.enabled }}
+              scheme: HTTPS
+              {{- end }}
             failureThreshold: 30
             periodSeconds: 5
           livenessProbe:
             httpGet:
               path: /ui/login.html
               port: http
+              {{- if .Values.tls.inPod.enabled }}
+              scheme: HTTPS
+              {{- end }}
             periodSeconds: 30
             timeoutSeconds: 5
             failureThreshold: 3
@@ -94,6 +106,9 @@ spec:
             httpGet:
               path: /ui/login.html
               port: http
+              {{- if .Values.tls.inPod.enabled }}
+              scheme: HTTPS
+              {{- end }}
             periodSeconds: 10
             timeoutSeconds: 5
             failureThreshold: 3

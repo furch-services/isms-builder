@@ -112,6 +112,26 @@ jobs:
           helm template test-ingress charts/isms-builder \
             --set ingress.enabled=true --set ingress.host=isms.example.com
 
+      - name: Template — sqlite happy path must render without DB_* wiring
+        run: |
+          OUT="$(helm template test-sqlite charts/isms-builder \
+            --set storageBackend=sqlite --set postgresql.enabled=false)"
+          if echo "$OUT" | grep -qE 'DB_PASS|DB_HOST'; then
+            echo "::error::sqlite backend should not render DB_PASS/DB_HOST env vars"
+            exit 1
+          fi
+          echo "OK: sqlite renders without DB_* env vars"
+
+      - name: Template — in-pod TLS uses HTTPS probes
+        run: |
+          OUT="$(helm template test-tls charts/isms-builder \
+            --set tls.inPod.enabled=true --set tls.inPod.secretName=my-tls)"
+          if ! echo "$OUT" | grep -q 'scheme: HTTPS'; then
+            echo "::error::tls.inPod.enabled should render HTTPS probes"
+            exit 1
+          fi
+          echo "OK: in-pod TLS renders HTTPS probes"
+
       - name: Template — external database, multiple replicas
         run: |
           helm template test-external charts/isms-builder \
@@ -125,6 +145,15 @@ jobs:
           if helm template test-invalid charts/isms-builder \
               --set replicaCount=3 --set storageBackend=sqlite 2>/dev/null; then
             echo "::error::_helpers.tpl validation did not trigger (replicaCount>1 + sqlite should fail to render)"
+            exit 1
+          fi
+
+      - name: Template — validation guard MUST reject external DB without existingSecret
+        run: |
+          if helm template test-invalid-secret charts/isms-builder \
+              --set postgresql.enabled=false --set storageBackend=postgres \
+              --set database.external.host=db.example.com 2>/dev/null; then
+            echo "::error::_helpers.tpl validation did not trigger (external DB without existingSecret should fail to render)"
             exit 1
           fi
           echo "OK: validation guard triggered as expected"

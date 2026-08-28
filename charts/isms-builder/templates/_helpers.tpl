@@ -59,8 +59,12 @@ silently unsafe or contradictory.
 {{- if and .Values.postgresql.enabled (ne .Values.storageBackend "postgres") }}
 {{- fail (printf "postgresql.enabled: true requires storageBackend: postgres (got %q). Either set storageBackend: postgres, or disable the bundled database and point database.external.* at your own." .Values.storageBackend) }}
 {{- end }}
-{{- if and (not .Values.postgresql.enabled) (not .Values.database.external.host) (ne .Values.storageBackend "json") (ne .Values.storageBackend "sqlite") }}
+{{- $needsExternalDb := or (eq .Values.storageBackend "postgres") (eq .Values.storageBackend "mariadb") }}
+{{- if and (not .Values.postgresql.enabled) $needsExternalDb (not .Values.database.external.host) }}
 {{- fail "postgresql.enabled: false requires database.external.host to be set (or storageBackend: json/sqlite, which need no external database)." }}
+{{- end }}
+{{- if and (not .Values.postgresql.enabled) $needsExternalDb (not .Values.database.external.existingSecret) }}
+{{- fail "postgresql.enabled: false with storageBackend postgres/mariadb requires database.external.existingSecret to be set (must contain key DB_PASS)." }}
 {{- end }}
 {{- if and .Values.ingress.tls.enabled .Values.tls.inPod.enabled }}
 {{- fail "ingress.tls.enabled and tls.inPod.enabled are mutually exclusive — TLS is terminated either at the Ingress or in the pod, not both." }}

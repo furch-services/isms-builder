@@ -15,11 +15,16 @@ function _json(val, fallback) { if (!val) return fallback; try { return JSON.par
 function nowISO() { return new Date().toISOString() }
 
 let _cache = { loadedAt: 0, index: {} }
+// Bumped by every _invalidate() — lets _reload() detect a concurrent write
+// that happened while its own SELECT was in flight (see below), instead of
+// unconditionally overwriting whatever _invalidate() just did.
+let _generation = 0
 
 function _stale() { return Date.now() - _cache.loadedAt > CACHE_TTL_MS }
-function _invalidate() { _cache.loadedAt = 0 }
+function _invalidate() { _cache.loadedAt = 0; _generation++ }
 
 async function _reload() {
+  const generationAtStart = _generation
   const rows = await getDb()('embeddings').select()
   const index = {}
   for (const row of rows) {
@@ -31,6 +36,15 @@ async function _reload() {
       vector: _json(row.vector, []),
       updatedAt: row.updated_at,
     }
+  }
+  if (_generation !== generationAtStart) {
+    // Something called _invalidate() (indexDoc/removeDoc) while our SELECT
+    // was in flight — that write may or may not be reflected in `rows`
+    // (depends on exact commit timing), so install this data as a baseline
+    // but leave the cache marked stale rather than fresh, forcing the next
+    // access to reload again and pick up that write for certain.
+    _cache = { loadedAt: 0, index }
+    return
   }
   _cache = { loadedAt: Date.now(), index }
 }
