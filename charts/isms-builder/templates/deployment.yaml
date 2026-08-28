@@ -1,0 +1,116 @@
+{{- include "isms-builder.validate" . -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "isms-builder.fullname" . }}
+  labels:
+    {{- include "isms-builder.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "isms-builder.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "isms-builder.selectorLabels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "isms-builder.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: 3000
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: {{ include "isms-builder.fullname" . }}
+          env:
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "isms-builder.jwtSecretName" . }}
+                  key: JWT_SECRET
+            {{- if ne .Values.storageBackend "json" }}
+            - name: DB_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "isms-builder.dbSecretName" . }}
+                  key: {{ include "isms-builder.dbSecretPasswordKey" . }}
+            {{- end }}
+            {{- if .Values.smtp.enabled }}
+            - name: SMTP_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ default (printf "%s-smtp" (include "isms-builder.fullname" .)) .Values.smtp.existingSecret }}
+                  key: SMTP_USER
+            - name: SMTP_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ default (printf "%s-smtp" (include "isms-builder.fullname" .)) .Values.smtp.existingSecret }}
+                  key: SMTP_PASS
+            {{- end }}
+            {{- if .Values.tls.inPod.enabled }}
+            - name: SSL_CERT_FILE
+              value: /app/ssl/tls.crt
+            - name: SSL_KEY_FILE
+              value: /app/ssl/tls.key
+            {{- end }}
+            {{- with .Values.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          volumeMounts:
+            - name: data
+              mountPath: /app/data
+            {{- if .Values.tls.inPod.enabled }}
+            - name: tls
+              mountPath: /app/ssl
+              readOnly: true
+            {{- end }}
+          # No /health endpoint is currently exposed by the app (see
+          # docs/architecture — tracked as a follow-up in ROADMAP.md), so
+          # probes reuse the same path the existing Docker HEALTHCHECK
+          # already polls.
+          startupProbe:
+            httpGet:
+              path: /ui/login.html
+              port: http
+            failureThreshold: 30
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /ui/login.html
+              port: http
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /ui/login.html
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          {{- with .Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      volumes:
+        - name: data
+          {{- if .Values.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ .Values.persistence.existingClaim | default (printf "%s-data" (include "isms-builder.fullname" .)) }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        {{- if .Values.tls.inPod.enabled }}
+        - name: tls
+          secret:
+            secretName: {{ .Values.tls.inPod.secretName }}
+        {{- end }}

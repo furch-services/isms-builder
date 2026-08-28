@@ -1,0 +1,60 @@
+ISMS Builder has been deployed as "{{ include "isms-builder.fullname" . }}" in namespace {{ .Release.Namespace }}.
+
+{{- if .Values.ingress.enabled }}
+
+Application URL:
+  http{{ if .Values.ingress.tls.enabled }}s{{ end }}://{{ .Values.ingress.host }}/
+{{- else }}
+
+No Ingress is enabled. Reach the app with:
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "isms-builder.fullname" . }} 3000:{{ .Values.service.port }}
+then open http://localhost:3000/
+{{- end }}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+FIRST LOGIN — CHANGE THE DEFAULT PASSWORD IMMEDIATELY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Username: admin@example.com
+  Password: adminpass
+
+This seed account is created automatically on first boot, the same way for
+every storage backend. Log in and change the password (Admin → My Profile)
+before exposing this deployment beyond a trusted network.
+
+DEMO DATA: a fresh install starts EMPTY apart from the seed users above
+(admin + two demo accounts, alice/bob). Loading the demo dataset is a manual,
+authenticated step in the UI ("choose demo data language" on first admin
+login) — it does not happen automatically on pod startup. Note: under a SQL
+storage backend (postgres/mariadb), the demo *user accounts* are created
+correctly, but the demo *content* bundle currently only writes JSON files
+under DATA_DIR, which the SQL-backed stores don't read — a known, separate
+limitation tracked in ROADMAP.md, not something this chart works around.
+
+ISO 27001 / ISO 9000 / ISO 9001 CONTROLS: these are copyright-protected
+standards and are NOT included. The corresponding SoA modules ship without
+control content until an administrator imports them — see the "ISO Controls"
+section of the project README.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SCALING
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Current configuration: replicaCount={{ .Values.replicaCount }}, storageBackend={{ .Values.storageBackend }}
+
+{{- if gt (int .Values.replicaCount) 1 }}
+
+You are running more than one replica. On a completely fresh install (empty
+database), wait for the first pod to finish its startup probe before this
+matters — a brand-new database being initialized by more than one pod at
+once has a very small theoretical race window in schema creation. Once the
+schema exists (i.e. after any successful first boot), scaling up and down
+freely is safe.
+{{- else }}
+
+To scale beyond a single replica, storageBackend must be "postgres" (bundled
+or external) or "mariadb" (external) — json and sqlite are file-based and
+this chart refuses to render with replicaCount > 1 against them. Recommended
+rollout for a fresh install: start with replicaCount: 1, confirm the app
+comes up healthy, then scale up.
+{{- end }}

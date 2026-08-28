@@ -1,0 +1,194 @@
+## Default values for the isms-builder Helm chart.
+## See charts/isms-builder/README.md for a guided walkthrough.
+
+image:
+  # Default points at the upstream project's published image. If you are
+  # testing from a fork, override this to your own GHCR namespace, e.g.
+  # ghcr.io/<your-github-user>/isms-builder — see the release workflow's
+  # docker-image job, which follows the same fork-safe pattern.
+  repository: ghcr.io/coolstartnow/isms-builder
+  # Defaults to Chart.appVersion when empty.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+replicaCount: 1
+
+# json | sqlite | mariadb | postgres
+#
+# IMPORTANT: replicaCount > 1 is only allowed with storageBackend "postgres"
+# (or "mariadb" against your own external server) — json and sqlite are
+# file-based with no cross-pod locking and are hard-rejected by this chart
+# when replicaCount > 1 (see templates/_helpers.tpl). See also
+# server/rbacStore.js / server/ai/embeddingStore.js for the corresponding
+# server-side fix that makes horizontal scaling correct under a SQL backend.
+storageBackend: postgres
+
+# ── Bundled PostgreSQL (groundhog2k/postgres subchart) ──────────────────────
+postgresql:
+  enabled: true
+
+  # Passed straight through to the bundled postgres subchart's own schema
+  # (https://github.com/groundhog2k/helm-charts/tree/master/charts/postgres) —
+  # these are NOT abstracted by this chart, so refer to that chart's values
+  # for anything not covered here.
+  userDatabase:
+    name:
+      value: isms_builder
+    user:
+      value: isms
+    # Must be present as an (empty) object even though existingSecret is set
+    # below — the subchart's statefulset.yaml template dereferences
+    # `.password.secretKey` unconditionally, which fails on a nil map.
+    password: {}
+    # Name of the Kubernetes Secret holding POSTGRES_DB/USERDB_USER/
+    # USERDB_PASSWORD, shared between the isms-builder Deployment and the
+    # bundled postgres subchart. NOT release-name-templated (a plain string,
+    # since subchart values.yaml cannot reference .Release.Name) — override
+    # this if you install more than one isms-builder release in the same
+    # namespace, so each gets its own secret.
+    existingSecret: "isms-builder-db-credentials"
+  storage:
+    requestedSize: 8Gi
+    className: ""
+
+  # Read by THIS chart's own templates.secret.yaml, not by the subchart:
+  # whether to generate the Secret named above. Set to false if you manage
+  # that Secret yourself (it must then already contain POSTGRES_DB,
+  # USERDB_USER, USERDB_PASSWORD).
+  createSecret: true
+  # Leave empty to auto-generate a random password on first install, kept
+  # stable across `helm upgrade` (same lookup-based mechanism as
+  # auth.jwtSecret below). Only used when createSecret is true.
+  generatedPassword: ""
+
+# ── External database (only used when postgresql.enabled: false) ───────────
+database:
+  external:
+    host: ""
+    port: 5432
+    name: isms_builder
+    user: isms
+    ssl: false
+    # Secret must contain a key named "DB_PASS".
+    existingSecret: ""
+
+# ── Persistent storage for uploads + (if storageBackend: json/sqlite) app
+#    state. ReadWriteMany so more than one replica can share it.
+persistence:
+  enabled: true
+  accessMode: ReadWriteMany
+  size: 10Gi
+  storageClassName: ""
+  # Set to reuse an existing PVC instead of creating a new one.
+  existingClaim: ""
+
+# ── Ingress (TLS terminated at the Ingress; the pod itself runs plain HTTP —
+#    see env.trustProxy below) ───────────────────────────────────────────────
+ingress:
+  enabled: false
+  className: ""
+  host: isms.example.com
+  annotations: {}
+  # e.g. for cert-manager:
+  #   cert-manager.io/cluster-issuer: letsencrypt-prod
+  tls:
+    enabled: false
+    secretName: ""
+
+# ── In-pod TLS (app terminates HTTPS itself via SSL_CERT_FILE/SSL_KEY_FILE) —
+#    mutually exclusive with ingress.tls.enabled (chart fails to render if
+#    both are set; pick one TLS termination point). ─────────────────────────
+tls:
+  inPod:
+    enabled: false
+    # Kubernetes TLS secret (keys tls.crt / tls.key) mounted read-only.
+    secretName: ""
+
+service:
+  type: ClusterIP
+  port: 3000
+
+resources: {}
+  # requests:
+  #   cpu: 250m
+  #   memory: 256Mi
+  # limits:
+  #   memory: 512Mi
+
+# Pod-level security context (fsGroup makes the mounted PVC group-writable
+# for the "isms" user without needing the container to start as root — see
+# docker-entrypoint.sh's root/non-root branch and the Dockerfile's fixed
+# UID/GID 10001).
+podSecurityContext:
+  fsGroup: 10001
+
+# Container-level security context.
+securityContext:
+  runAsUser: 10001
+  runAsGroup: 10001
+  runAsNonRoot: true
+  allowPrivilegeEscalation: false
+
+serviceAccount:
+  create: true
+  name: ""
+
+auth:
+  jwtSecret:
+    # Leave empty to auto-generate a random 48-char secret on first install,
+    # kept stable across `helm upgrade` via a `lookup` at render time (so
+    # existing sessions/tokens don't get invalidated on every upgrade).
+    # Set existingSecret to bring your own instead (must contain key
+    # "JWT_SECRET").
+    existingSecret: ""
+  # Must stay false — DEV_HEADER_AUTH bypasses password auth entirely and is
+  # only meant for local development. This chart does not expose an override.
+  devHeaderAuth: false
+
+env:
+  jwtExpiresIn: 8h
+  # Set to "1" when using the Ingress above (TLS terminated there) so the app
+  # trusts X-Forwarded-* headers for correct audit-log IPs and confirmation
+  # link hostnames. Leave empty when using tls.inPod instead.
+  trustProxy: "1"
+  # Overrides host/protocol detection entirely — set this to your externally
+  # visible URL (e.g. https://isms.example.com) if it differs from what
+  # trustProxy alone would infer.
+  publicUrl: ""
+
+# ── Optional: SMTP (all email notifications are silently disabled if this
+#    stays disabled — nothing else in the app requires it) ─────────────────
+smtp:
+  enabled: false
+  host: ""
+  port: 587
+  secure: false
+  from: ""
+  # Provide credentials one of two ways:
+  #   1. --set smtp.user=... --set smtp.pass=... at install time (this chart
+  #      then creates the Secret for you), or
+  #   2. existingSecret: "your-secret-name" (must contain keys "SMTP_USER"
+  #      and "SMTP_PASS") if you manage the Secret yourself.
+  # Never commit real values for user/pass to a values file.
+  user: ""
+  pass: ""
+  existingSecret: ""
+
+# ── Optional: local Ollama for semantic search (falls back to keyword search
+#    if unreachable — nothing breaks without it) ────────────────────────────
+ollama:
+  enabled: false
+  url: "http://localhost:11434"
+  embedModel: "nomic-embed-text"
+
+# TTL (ms) for the search-index read cache each pod keeps locally when
+# storageBackend is a SQL backend — see server/ai/embeddingStore.js. Lower
+# values make a document indexed on one pod visible on others sooner, at the
+# cost of more frequent reads of the embeddings table.
+embeddingCacheTtlMs: 30000
+
+# Extra environment variables not covered by a dedicated value above, e.g.:
+#   extraEnv:
+#     - name: SOME_VAR
+#       value: "some-value"
+extraEnv: []

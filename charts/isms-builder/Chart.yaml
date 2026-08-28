@@ -1,0 +1,36 @@
+apiVersion: v2
+name: isms-builder
+description: Self-hosted ISMS platform (ISO 27001, NIS2, GDPR/DSGVO, BSI IT-Grundschutz) — policy management, risk register, SoA, GDPR, BCM, governance, assets, training.
+type: application
+
+# Keep in sync with package.json's version — scripts/bump-version.sh updates
+# both in one step, and .github/workflows/release.yml's "helm-chart" job
+# verifies this against the pushed git tag before publishing.
+version: 1.40.0
+appVersion: "1.40.0"
+
+home: https://github.com/coolstartnow/isms-builder
+sources:
+  - https://github.com/coolstartnow/isms-builder
+icon: https://raw.githubusercontent.com/coolstartnow/isms-builder/main/docs/isms-builder-banner.png
+
+keywords:
+  - isms
+  - iso27001
+  - nis2
+  - gdpr
+  - dsgvo
+  - security
+  - compliance
+  - grc
+
+maintainers:
+  - name: Claude Hecker
+    url: https://github.com/coolstartnow
+
+dependencies:
+  - name: postgres
+    alias: postgresql
+    version: "1.6.8"
+    repository: "https://groundhog2k.github.io/helm-charts/"
+    condition: postgresql.enabled
