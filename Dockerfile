@@ -19,8 +19,12 @@ RUN npm ci --omit=dev
 FROM node:lts-alpine AS runtime
 WORKDIR /app
 
-# Non-root user for security + su-exec for privilege drop in entrypoint
-RUN addgroup -S isms && adduser -S isms -G isms \
+# Non-root user for security + su-exec for privilege drop in entrypoint.
+# Fixed UID/GID (10001) instead of an Alpine-assigned system UID: Kubernetes
+# securityContext.runAsUser/fsGroup needs a stable, known value to reference —
+# see charts/isms-builder/values.yaml podSecurityContext. 10001 (not 1000):
+# node:lts-alpine already ships a "node" user/group at 1000.
+RUN addgroup -g 10001 -S isms && adduser -u 10001 -S isms -G isms \
     && apk add --no-cache su-exec
 
 # Copy installed modules from build stage
