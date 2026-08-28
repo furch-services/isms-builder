@@ -83,6 +83,52 @@ jobs:
           JWT_SECRET: ci-test-secret-do-not-use-in-production
           STORAGE_BACKEND: sqlite
 
+  helm-lint:
+    name: Helm Chart Lint & Template
+    runs-on: ubuntu-latest
+    # Pure client-side rendering (helm lint / helm template) — no cluster is
+    # contacted, so this is safe to run on every push/PR.
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: 'v3.16.4'
+
+      - name: Fetch chart dependencies
+        run: helm dependency build charts/isms-builder
+
+      - name: Lint
+        run: helm lint charts/isms-builder
+
+      - name: Template — default values (bundled postgres)
+        run: helm template test-default charts/isms-builder
+
+      - name: Template — Ingress + host
+        run: |
+          helm template test-ingress charts/isms-builder \
+            --set ingress.enabled=true --set ingress.host=isms.example.com
+
+      - name: Template — external database, multiple replicas
+        run: |
+          helm template test-external charts/isms-builder \
+            --set postgresql.enabled=false --set storageBackend=postgres \
+            --set replicaCount=3 \
+            --set database.external.host=db.example.com \
+            --set database.external.existingSecret=my-db-secret
+
+      - name: Template — validation guard MUST reject replicaCount>1 with a file-based backend
+        run: |
+          if helm template test-invalid charts/isms-builder \
+              --set replicaCount=3 --set storageBackend=sqlite 2>/dev/null; then
+            echo "::error::_helpers.tpl validation did not trigger (replicaCount>1 + sqlite should fail to render)"
+            exit 1
+          fi
+          echo "OK: validation guard triggered as expected"
+
   security-scan:
     name: Dependency Security Scan
     runs-on: ubuntu-latest

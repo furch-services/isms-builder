@@ -180,3 +180,66 @@ jobs:
             echo '```'
             echo "Digest: \`${{ steps.build.outputs.digest }}\`"
           } >> "$GITHUB_STEP_SUMMARY"
+
+  # ── Helm chart as an OCI artifact ─────────────────────────────────────────
+  # Published after a successful release, alongside the Docker image, to:
+  #   oci://ghcr.io/<owner>/isms-builder/charts/isms-builder:<version>
+  # Same fork-safe IMAGE_NAME pattern as the docker-image job above, so a
+  # fork can build/test its own chart from its own namespace before opening
+  # a PR upstream.
+  helm-chart:
+    name: Publish Helm chart
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    env:
+      REGISTRY: ghcr.io
+      IMAGE_NAME: ${{ github.repository }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: 'v3.16.4'
+
+      - name: Verify Chart.yaml version matches tag
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          CHART_VERSION="$(grep -m1 '^version:' charts/isms-builder/Chart.yaml | awk '{print $2}')"
+          if [ "$TAG_VERSION" != "$CHART_VERSION" ]; then
+            echo "::error::charts/isms-builder/Chart.yaml version ($CHART_VERSION) does not match tag ${GITHUB_REF_NAME}. Run 'bash scripts/bump-version.sh ${TAG_VERSION}' before tagging."
+            exit 1
+          fi
+          echo "OK: Chart.yaml version ($CHART_VERSION) matches tag ${GITHUB_REF_NAME}"
+
+      - name: Fetch chart dependencies
+        run: helm dependency build charts/isms-builder
+
+      - name: Lint
+        run: helm lint charts/isms-builder
+
+      - name: Package
+        run: helm package charts/isms-builder --destination dist/
+
+      - name: Log in to GHCR (OCI)
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ${{ env.REGISTRY }} --username ${{ github.actor }} --password-stdin
+
+      - name: Push chart
+        run: |
+          CHART_TGZ="$(ls dist/isms-builder-*.tgz)"
+          helm push "$CHART_TGZ" "oci://${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/charts"
+
+      - name: Summary
+        run: |
+          {
+            echo "### Helm chart published"
+            echo '```'
+            echo "oci://${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/charts/isms-builder:${GITHUB_REF_NAME#v}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
