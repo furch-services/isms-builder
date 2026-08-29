@@ -11,6 +11,12 @@
 FROM node:lts-alpine AS deps
 WORKDIR /app
 
+# Build-Toolchain für native Module (better-sqlite3): wird nur gebraucht,
+# falls prebuild-install kein passendes vorkompiliertes Binary findet/laden
+# kann und auf node-gyp-Kompilierung zurückfällt. Fliegt mit der Stage aus
+# dem finalen Image (Multi-Stage-Build kopiert nur node_modules weiter).
+RUN apk add --no-cache python3 make g++
+
 # Copy only manifests first (better layer caching)
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
