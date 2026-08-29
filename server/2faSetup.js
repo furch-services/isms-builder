@@ -23,14 +23,14 @@ function generateSecret() {
 }
 
 async function setupForUser(username) {
-  const user = getUserByUsername(username)
+  const user = await getUserByUsername(username)
   if (!user) return null
 
   // Bestehendes Secret wiederverwenden oder neues generieren
   let secret = user.totpSecret
   if (!secret || secret.length < 16) {
     secret = generateSecret()
-    setUserTotpSecret(username, secret)
+    await setUserTotpSecret(username, secret)
   }
 
   const issuer = 'ISMS-Build'
@@ -43,9 +43,9 @@ async function setupForUser(username) {
 }
 
 async function disableForUser(username) {
-  const user = getUserByUsername(username)
+  const user = await getUserByUsername(username)
   if (!user) return false
-  setUserTotpSecret(username, '')
+  await setUserTotpSecret(username, '')
   return true
 }
 

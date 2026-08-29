@@ -310,6 +310,31 @@ gh attestation verify oci://ghcr.io/coolstartnow/isms-builder:latest --owner coo
 
 ---
 
+## Kubernetes / Helm
+
+A Helm chart at [`charts/isms-builder/`](charts/isms-builder/) deploys the app together with
+everything it needs, including a bundled PostgreSQL database by default:
+
+```bash
+helm repo add groundhog2k https://groundhog2k.github.io/helm-charts/
+helm dependency build charts/isms-builder
+helm install my-isms charts/isms-builder --namespace isms --create-namespace
+```
+
+See the chart's own [README](charts/isms-builder/README.md) for the full walkthrough — Ingress
+with TLS terminated there, in-pod TLS as an alternative, an external database instead of the
+bundled one, and scaling beyond a single replica (only supported with a SQL backend — `json` and
+`sqlite` are file-based with no cross-pod locking, and the chart refuses to render
+`replicaCount > 1` against either).
+
+Once tagged releases are published, the chart itself is also available as an OCI artifact:
+
+```bash
+helm install my-isms oci://ghcr.io/coolstartnow/isms-builder/charts/isms-builder
+```
+
+---
+
 ## Requirements
 
 - **Node.js 18+** (tested: 18, 20, 22)

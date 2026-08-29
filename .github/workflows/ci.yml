@@ -83,6 +83,111 @@ jobs:
           JWT_SECRET: ci-test-secret-do-not-use-in-production
           STORAGE_BACKEND: sqlite
 
+  helm-lint:
+    name: Helm Chart Lint & Template
+    runs-on: ubuntu-latest
+    # Pure client-side rendering (helm lint / helm template) — no cluster is
+    # contacted, so this is safe to run on every push/PR.
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: 'v3.16.4'
+
+      - name: Fetch chart dependencies
+        run: |
+          helm repo add groundhog2k https://groundhog2k.github.io/helm-charts/
+          helm dependency build charts/isms-builder
+
+      - name: Lint
+        run: helm lint charts/isms-builder
+
+      - name: Template — default values (bundled postgres)
+        run: helm template test-default charts/isms-builder
+
+      - name: Template — Ingress + host
+        run: |
+          helm template test-ingress charts/isms-builder \
+            --set ingress.enabled=true --set ingress.host=isms.example.com
+
+      - name: Template — sqlite happy path must render without DB_* wiring
+        run: |
+          OUT="$(helm template test-sqlite charts/isms-builder \
+            --set storageBackend=sqlite --set postgresql.enabled=false)"
+          if echo "$OUT" | grep -qE 'DB_PASS|DB_HOST'; then
+            echo "::error::sqlite backend should not render DB_PASS/DB_HOST env vars"
+            exit 1
+          fi
+          echo "OK: sqlite renders without DB_* env vars"
+
+      - name: Template — in-pod TLS uses HTTPS probes
+        run: |
+          OUT="$(helm template test-tls charts/isms-builder \
+            --set tls.inPod.enabled=true --set tls.inPod.secretName=my-tls)"
+          if ! echo "$OUT" | grep -q 'scheme: HTTPS'; then
+            echo "::error::tls.inPod.enabled should render HTTPS probes"
+            exit 1
+          fi
+          echo "OK: in-pod TLS renders HTTPS probes"
+
+      - name: Template — external database, multiple replicas
+        run: |
+          helm template test-external charts/isms-builder \
+            --set postgresql.enabled=false --set storageBackend=postgres \
+            --set replicaCount=3 --set persistence.accessMode=ReadWriteMany \
+            --set database.external.host=db.example.com \
+            --set database.external.existingSecret=my-db-secret
+
+      - name: Template — storageBackend aliases pg/mysql must be normalized, not rejected or silently unwired
+        run: |
+          OUT="$(helm template test-alias-pg charts/isms-builder --set storageBackend=pg)"
+          echo "$OUT" | grep -q 'STORAGE_BACKEND: "postgres"' || { echo "::error::storageBackend: pg should normalize to postgres"; exit 1; }
+          OUT="$(helm template test-alias-mysql charts/isms-builder \
+            --set postgresql.enabled=false --set storageBackend=mysql \
+            --set database.external.host=db.example.com --set database.external.existingSecret=my-db-secret)"
+          echo "$OUT" | grep -q 'DB_HOST: "db.example.com"' || { echo "::error::storageBackend: mysql should still wire DB_HOST (normalizes to mariadb)"; exit 1; }
+          echo "OK: pg/mysql aliases normalized correctly"
+
+      - name: Template — validation guard MUST reject replicaCount>1 with a file-based backend
+        run: |
+          if helm template test-invalid charts/isms-builder \
+              --set replicaCount=3 --set storageBackend=sqlite 2>/dev/null; then
+            echo "::error::_helpers.tpl validation did not trigger (replicaCount>1 + sqlite should fail to render)"
+            exit 1
+          fi
+
+      - name: Template — validation guard MUST reject external DB without existingSecret
+        run: |
+          if helm template test-invalid-secret charts/isms-builder \
+              --set postgresql.enabled=false --set storageBackend=postgres \
+              --set database.external.host=db.example.com 2>/dev/null; then
+            echo "::error::_helpers.tpl validation did not trigger (external DB without existingSecret should fail to render)"
+            exit 1
+          fi
+          echo "OK: validation guard triggered as expected"
+
+      - name: Template — validation guard MUST reject replicaCount>1 without ReadWriteMany
+        run: |
+          if helm template test-invalid-rwo charts/isms-builder \
+              --set replicaCount=3 2>/dev/null; then
+            echo "::error::_helpers.tpl validation did not trigger (replicaCount>1 requires persistence.accessMode=ReadWriteMany, since a PVC's accessModes are immutable and cannot be auto-upgraded on helm upgrade)"
+            exit 1
+          fi
+          echo "OK: PVC accessMode guard triggered as expected"
+
+      - name: Template — validation guard MUST reject tls.inPod.enabled without a secretName
+        run: |
+          if helm template test-invalid-tls charts/isms-builder \
+              --set tls.inPod.enabled=true 2>/dev/null; then
+            echo "::error::_helpers.tpl validation did not trigger (tls.inPod.enabled requires tls.inPod.secretName)"
+            exit 1
+          fi
+          echo "OK: tls.inPod secretName guard triggered as expected"
+
   security-scan:
     name: Dependency Security Scan
     runs-on: ubuntu-latest

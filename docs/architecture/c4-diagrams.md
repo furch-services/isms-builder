@@ -154,3 +154,31 @@ Deployment options:
 - **Direct**: `node server/index.js` — SSL via `SSL_CERT_FILE` + `SSL_KEY_FILE` in `.env`
 - **Docker**: `docker compose up -d --build`; optional `mariadb`/`postgres` services via Compose profiles (`--profile mariadb`/`--profile postgres`, see #42) for "app container + DB container" setups
 - **Reverse proxy**: nginx/Caddy/Traefik in front, app on HTTP internally
+- **Kubernetes**: Helm chart at `charts/isms-builder/` (see README's "Kubernetes / Helm" section) — Deployment + Service + optional Ingress, PVC for uploads, and a bundled PostgreSQL StatefulSet by default
+
+```mermaid
+graph TD
+  subgraph Cluster["Kubernetes Cluster / Namespace"]
+    ing["Ingress\n(TLS terminated here,\noptional)"]
+    svc["Service\n(ClusterIP)"]
+    subgraph Pods["Deployment (replicaCount pods)"]
+      pod["isms-builder container\n(plain HTTP :3000,\nfsGroup + non-root UID 10001)"]
+    end
+    pvc[("PVC\nReadWriteMany —\nuploads + app state")]
+    subgraph DB["Bundled PostgreSQL (optional)"]
+      pg["StatefulSet\n(groundhog2k/postgres subchart)"]
+      dbpvc[("PVC — pg data")]
+    end
+  end
+  browser["Browser\n(SPA)"] -->|HTTPS| ing
+  ing --> svc
+  svc --> pod
+  pod <--> pvc
+  pod -->|STORAGE_BACKEND=postgres| pg
+  pg <--> dbpvc
+```
+
+Notes specific to the chart (see `charts/isms-builder/README.md` for the full list): `replicaCount
+> 1` is only permitted with a SQL storage backend (`postgres`/`mariadb`) — `json`/`sqlite` are
+file-based with no cross-pod locking, and the chart's `_helpers.tpl` refuses to render that
+combination. Both Ingress-terminated and in-pod TLS are supported, mutually exclusively.

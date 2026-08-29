@@ -1,0 +1,47 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "isms-builder.fullname" . }}
+  labels:
+    {{- include "isms-builder.labels" . | nindent 4 }}
+data:
+  PORT: "3000"
+  {{- /* Normalized: the app accepts "pg"/"mysql" as aliases for "postgres"/
+     "mariadb" (server/db/knexDatabase.js), but writing the canonical name
+     here keeps it consistent with the guards below, which must also use the
+     normalized form to recognize those aliases correctly. */}}
+  STORAGE_BACKEND: {{ include "isms-builder.storageBackend" . | quote }}
+  JWT_EXPIRES_IN: {{ .Values.env.jwtExpiresIn | quote }}
+  # Never true here — this chart deliberately does not expose an override,
+  # DEV_HEADER_AUTH bypasses password auth entirely and is dev-only.
+  DEV_HEADER_AUTH: "false"
+  {{- if .Values.env.trustProxy }}
+  TRUST_PROXY: {{ .Values.env.trustProxy | quote }}
+  {{- end }}
+  {{- if .Values.env.publicUrl }}
+  PUBLIC_URL: {{ .Values.env.publicUrl | quote }}
+  {{- end }}
+  {{- /* json and sqlite are both file-based and need no DB_* wiring at all —
+     sqlite persists straight into the mounted PVC, no server/credentials. */}}
+  {{- if or (eq (include "isms-builder.storageBackend" .) "postgres") (eq (include "isms-builder.storageBackend" .) "mariadb") }}
+  DB_HOST: {{ include "isms-builder.dbHost" . | quote }}
+  DB_PORT: {{ include "isms-builder.dbPort" . | quote }}
+  DB_NAME: {{ include "isms-builder.dbName" . | quote }}
+  DB_USER: {{ include "isms-builder.dbUser" . | quote }}
+  {{- /* Bundled subchart: plain in-cluster TCP, no TLS configured on either
+     side — DB_SSL stays false. External DB: honor the configured flag. */}}
+  DB_SSL: {{ (.Values.postgresql.enabled | ternary false .Values.database.external.ssl) | quote }}
+  {{- end }}
+  {{- if .Values.smtp.enabled }}
+  SMTP_HOST: {{ .Values.smtp.host | quote }}
+  SMTP_PORT: {{ .Values.smtp.port | quote }}
+  SMTP_SECURE: {{ .Values.smtp.secure | quote }}
+  {{- if .Values.smtp.from }}
+  SMTP_FROM: {{ .Values.smtp.from | quote }}
+  {{- end }}
+  {{- end }}
+  {{- if .Values.ollama.enabled }}
+  OLLAMA_URL: {{ .Values.ollama.url | quote }}
+  EMBED_MODEL: {{ .Values.ollama.embedModel | quote }}
+  {{- end }}
+  EMBEDDING_CACHE_TTL_MS: {{ .Values.embeddingCacheTtlMs | quote }}

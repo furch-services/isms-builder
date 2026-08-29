@@ -26,10 +26,11 @@ const rbacStore    = require('./rbacStore')
 const INTERVAL_MS = 15 * 60 * 1000
 const FIRST_RUN_DELAY_MS = 90_000   // nach dem Start kurz warten, wie beim Notifier
 
-function recipients() {
+async function recipients() {
   const settings = orgSettings.get()
   try {
-    const emails = rbacStore.getUsersByFunction('ciso').map(u => u.email).filter(Boolean)
+    const users  = await rbacStore.getUsersByFunction('ciso')
+    const emails = users.map(u => u.email).filter(Boolean)
     if (emails.length) return [...new Set(emails)]
   } catch {}
   const fallback = settings.cisoSettings?.escalationEmail
@@ -82,7 +83,7 @@ async function runCheck({ now = new Date(), send = sendMail } = {}) {
   const pending = art23.pendingAlerts(all, now)
   if (!pending.length) return 0
 
-  const to      = recipients()
+  const to      = await recipients()
   const orgName = orgSettings.get().orgName || 'ISMS Builder'
   let notified  = 0
 

@@ -82,10 +82,10 @@ function buildDigest(orgName, sections) {
 
 // ── Einzelne Prüfungen ───────────────────────────────────────────────────────
 
-function checkRisks(cfg) {
+async function checkRisks(cfg) {
   if (!cfg.risks) return null
   try {
-    const all = riskStore.getAll().filter(r => !r.deletedAt)
+    const all = (await riskStore.getAll()).filter(r => !r.deletedAt)
     const critical = all.filter(r => r.status !== 'closed' && r.score >= 15)
     const high     = all.filter(r => r.status !== 'closed' && r.score >= 10 && r.score < 15)
     if (!critical.length && !high.length) return null
@@ -107,11 +107,11 @@ function checkRisks(cfg) {
   } catch { return null }
 }
 
-function checkDsar(cfg, gdpoSettings) {
+async function checkDsar(cfg, gdpoSettings) {
   if (!cfg.dsar) return null
   try {
     const deadline = gdpoSettings.dsarDeadlineDays || 30
-    const all = gdprStore.dsar.getAll({}).filter(r => !r.deletedAt && r.status !== 'closed' && r.status !== 'completed')
+    const all = (await gdprStore.dsar.getAll({})).filter(r => !r.deletedAt && r.status !== 'closed' && r.status !== 'completed')
     const urgent = all.filter(r => {
       const created = r.createdAt
       const dueInDays = deadline - daysSince(created)
@@ -129,10 +129,10 @@ function checkDsar(cfg, gdpoSettings) {
   } catch { return null }
 }
 
-function checkGdprIncidents(cfg) {
+async function checkGdprIncidents(cfg) {
   if (!cfg.gdprIncidents) return null
   try {
-    const all = gdprStore.incidents.getAll({}).filter(r => !r.deletedAt)
+    const all = (await gdprStore.incidents.getAll({})).filter(r => !r.deletedAt)
     const overdue = all.filter(r => {
       const isOpen = r.status !== 'closed' && r.status !== 'notified'
       return isOpen && daysSince(r.createdAt) >= 2
@@ -149,10 +149,10 @@ function checkGdprIncidents(cfg) {
   } catch { return null }
 }
 
-function checkBcm(cfg) {
+async function checkBcm(cfg) {
   if (!cfg.bcm) return null
   try {
-    const plans = bcmStore.getPlans().filter(r => r.nextTest)
+    const plans = (await bcmStore.getPlans()).filter(r => r.nextTest)
     const due   = plans.filter(r => daysFromNow(r.nextTest) <= 14 && daysFromNow(r.nextTest) >= 0)
     if (!due.length) return null
 
@@ -166,10 +166,10 @@ function checkBcm(cfg) {
   } catch { return null }
 }
 
-function checkContracts(cfg) {
+async function checkContracts(cfg) {
   if (!cfg.contracts) return null
   try {
-    const all = legalStore.contracts.getAll({}).filter(r => !r.deletedAt && r.endDate)
+    const all = (await legalStore.contracts.getAll({})).filter(r => !r.deletedAt && r.endDate)
     const expiring = all.filter(r => daysFromNow(r.endDate) <= 30 && daysFromNow(r.endDate) >= 0)
     if (!expiring.length) return null
 
@@ -183,11 +183,11 @@ function checkContracts(cfg) {
   } catch { return null }
 }
 
-function checkTemplateReviews(cfg) {
+async function checkTemplateReviews(cfg) {
   if (!cfg.templateReview) return null
   try {
     const s = getStorage()
-    const all = (s.getTemplates?.({}) || []).filter(r => !r.deletedAt && r.nextReviewDate)
+    const all = ((await s.getTemplates?.({})) || []).filter(r => !r.deletedAt && r.nextReviewDate)
     const due = all.filter(r => daysFromNow(r.nextReviewDate) <= 14 && daysFromNow(r.nextReviewDate) >= 0)
     if (!due.length) return null
 
@@ -201,13 +201,13 @@ function checkTemplateReviews(cfg) {
   } catch { return null }
 }
 
-function checkSupplierAudits(cfg) {
+async function checkSupplierAudits(cfg) {
   if (!cfg.supplierAudits) return null
   try {
     const supplierStore = require('./db/supplierStore')
     const today   = new Date().toISOString().slice(0, 10)
-    const upcoming = supplierStore.getUpcomingAudits(14)
-    const overdue  = supplierStore.getAll().filter(s =>
+    const upcoming = await supplierStore.getUpcomingAudits(14)
+    const overdue  = (await supplierStore.getAll()).filter(s =>
       !s.deletedAt && s.nextAuditDate && s.nextAuditDate < today
     )
     if (!upcoming.length && !overdue.length) return null
@@ -228,11 +228,11 @@ function checkSupplierAudits(cfg) {
   } catch { return null }
 }
 
-function checkDeletionLog(cfg) {
+async function checkDeletionLog(cfg) {
   if (!cfg.deletionLog) return null
   try {
-    const overdue  = gdprStore.deletionLog.getDue()          // Frist bereits abgelaufen
-    const upcoming = gdprStore.deletionLog.getUpcoming(90)   // fällig innerhalb 90 Tage
+    const overdue  = await gdprStore.deletionLog.getDue()          // Frist bereits abgelaufen
+    const upcoming = await gdprStore.deletionLog.getUpcoming(90)   // fällig innerhalb 90 Tage
 
     if (!overdue.length && !upcoming.length) return null
 
@@ -260,9 +260,9 @@ function checkDeletionLog(cfg) {
  * Gibt deduplizierte E-Mail-Adressen aller Nutzer mit einer bestimmten Funktion zurück.
  * Fallback: Org-Setting-Adresse, falls kein Nutzer mit dieser Funktion gefunden wird.
  */
-function getRecipients(fn, fallbackEmail) {
+async function getRecipients(fn, fallbackEmail) {
   try {
-    const users = rbacStore.getUsersByFunction(fn)
+    const users = await rbacStore.getUsersByFunction(fn)
     const emails = users.map(u => u.email).filter(Boolean)
     if (emails.length) return [...new Set(emails)]
   } catch {}
@@ -283,9 +283,9 @@ async function runDailyChecks() {
   const gdpoSettings = settings.gdpoSettings || {}
 
   // Empfänger nach Funktion — mit Org-Setting als Fallback
-  const cisoRecipients  = getRecipients('ciso',  settings.cisoSettings?.escalationEmail || '')
-  const dsoRecipients   = getRecipients('dso',   '')
-  const adminRecipients = getRecipients('admin_notify', cfg.adminEmail || '')
+  const cisoRecipients  = await getRecipients('ciso',  settings.cisoSettings?.escalationEmail || '')
+  const dsoRecipients   = await getRecipients('dso',   '')
+  const adminRecipients = await getRecipients('admin_notify', cfg.adminEmail || '')
 
   // Admin-E-Mail immer als letzten Fallback für alle Digest-Typen hinzufügen
   if (cfg.adminEmail && !adminRecipients.includes(cfg.adminEmail)) adminRecipients.push(cfg.adminEmail)
@@ -293,7 +293,7 @@ async function runDailyChecks() {
   const today = new Date().toLocaleDateString('de-DE')
 
   // ── CISO-Digest (Risiken + BCM + Lieferanten) ────────────────────────────
-  const cisoSections = [checkRisks(cfg), checkBcm(cfg), checkSupplierAudits(cfg)].filter(Boolean)
+  const cisoSections = (await Promise.all([checkRisks(cfg), checkBcm(cfg), checkSupplierAudits(cfg)])).filter(Boolean)
   if (cisoSections.length) {
     // Deduplizierte Gesamtliste: CISO + DSO falls Person beide Funktionen hat
     const allCisoRecips = [...new Set([...cisoRecipients])]
@@ -303,7 +303,7 @@ async function runDailyChecks() {
   }
 
   // ── DSB/GDPO-Digest (DSAR + GDPR-Vorfälle + Löschprotokoll) ─────────────
-  const dsoSections = [checkDsar(cfg, gdpoSettings), checkGdprIncidents(cfg), checkDeletionLog(cfg)].filter(Boolean)
+  const dsoSections = (await Promise.all([checkDsar(cfg, gdpoSettings), checkGdprIncidents(cfg), checkDeletionLog(cfg)])).filter(Boolean)
   if (dsoSections.length) {
     // DSO-Empfänger ohne Duplikate (eine Person kann CISO+DSO sein → bekommt beide Digests)
     for (const to of dsoRecipients) {
@@ -318,7 +318,7 @@ async function runDailyChecks() {
   }
 
   // ── Admin-Digest (Verträge + Template-Reviews) ────────────────────────────
-  const adminSections = [checkContracts(cfg), checkTemplateReviews(cfg)].filter(Boolean)
+  const adminSections = (await Promise.all([checkContracts(cfg), checkTemplateReviews(cfg)])).filter(Boolean)
   if (adminSections.length) {
     for (const to of adminRecipients) {
       await sendMail(to, `[ISMS] Tagesübersicht Admin – ${today}`, buildDigest(orgName, adminSections))
@@ -347,4 +347,10 @@ function start() {
   }, 60_000)
 }
 
-module.exports = { start, runDailyChecks }
+module.exports = {
+  start, runDailyChecks,
+  // Exported for testability (see tests/notifierDbBackend.test.js), same
+  // rationale as art23Watcher.js exporting runCheck/buildMail.
+  checkRisks, checkDsar, checkGdprIncidents, checkBcm, checkContracts,
+  checkTemplateReviews, checkSupplierAudits, checkDeletionLog,
+}

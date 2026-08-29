@@ -74,7 +74,13 @@ app.use('/ui', (req, res, next) => {
 
 const storage = require('./storage')
 const rbacStore = require('./rbacStore')
-rbacStore.init()
+// Captured (not called again) so bootstrap() can await this exact same
+// promise below — calling rbacStore.init() a second time would race the
+// SQL-backend seed against itself (two concurrent inserts of admin/alice/
+// bob, second one failing on a UNIQUE constraint). The .catch() here makes
+// this promise always resolve (logging, never throwing), so awaiting it in
+// bootstrap() can't turn a non-fatal init failure into a fatal one.
+const rbacStoreInit = rbacStore.init().catch(e => console.error('[rbacStore] init:', e.message))
 
 // Fallback: provide a minimal setUserTotpSecret if not present in rbacStore
 try {
@@ -283,6 +289,11 @@ async function bootstrap() {
   if (backend !== 'json') {
     await require('./db/knexDatabase').init()
   }
+  // Awaits the SAME promise already kicked off at module load (rbacStoreInit
+  // above) — NOT a second call to rbacStore.init() — so the SQL-backend
+  // admin/alice/bob seed is guaranteed to have finished before the listener
+  // opens, which this bootstrap() is otherwise the single barrier for.
+  await rbacStoreInit
   await runAutopurge()
   await seedAll()
 }

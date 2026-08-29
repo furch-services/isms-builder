@@ -87,6 +87,7 @@ tmp/
 Thumbs.db
 claude.md
 .idea/
+.scannerwork/
 
 # Puppeteer cache
 .local-chromium/
@@ -98,3 +99,7 @@ demo-management/
 # Privates Backlog (nicht publizieren)
 docs/private/
 landing/
+
+# Helm: fetched subchart archives (`helm dependency build` re-downloads these
+# from Chart.lock; only Chart.lock itself is committed)
+charts/isms-builder/charts/*.tgz

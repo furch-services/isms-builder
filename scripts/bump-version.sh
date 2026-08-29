@@ -75,7 +75,19 @@ sed -i "1s/V ${OLD_FULL}\b/V ${NEW_VERSION}/" README.md
 sed -i "1s/version-${OLD_FULL}\b/version-${NEW_VERSION}/" README.md
 ok "README.md (Zeile 1) → V ${NEW_VERSION}"
 
-# 4. CLAUDE.md (Projektdoku)
+# 4. charts/isms-builder/Chart.yaml
+# Keeps the Helm chart's version/appVersion in lockstep with package.json, so
+# .github/workflows/release.yml's "helm-chart" job (which checks Chart.yaml's
+# version against the pushed tag, mirroring the existing package.json check
+# above) doesn't need a separate manual step.
+if [[ -f charts/isms-builder/Chart.yaml ]]; then
+  info "charts/isms-builder/Chart.yaml..."
+  sed -i "s/^version: .*/version: ${FULL_VER}/" charts/isms-builder/Chart.yaml
+  sed -i "s/^appVersion: .*/appVersion: \"${FULL_VER}\"/" charts/isms-builder/Chart.yaml
+  ok "Chart.yaml → version/appVersion ${FULL_VER}"
+fi
+
+# 5. CLAUDE.md (Projektdoku)
 if grep -q "V ${OLD_FULL}\b" CLAUDE.md 2>/dev/null; then
   sed -i "s/V ${OLD_FULL}\b/V ${NEW_VERSION}/g" CLAUDE.md
   ok "CLAUDE.md aktualisiert"

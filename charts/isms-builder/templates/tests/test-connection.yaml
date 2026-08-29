@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "isms-builder.fullname" . }}-test-connection
+  labels:
+    {{- include "isms-builder.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+spec:
+  containers:
+    - name: wget
+      image: busybox:1.36
+      command: ["wget"]
+      {{- if .Values.tls.inPod.enabled }}
+      {{- /* Service forwards plain TCP into an HTTPS-only listener here (see
+         deployment.yaml probes) — --no-check-certificate because the pod's
+         cert almost certainly has no SAN for the in-cluster Service DNS name. */}}
+      args: ["-qO-", "--no-check-certificate", "https://{{ include "isms-builder.fullname" . }}:{{ .Values.service.port }}/ui/login.html"]
+      {{- else }}
+      args: ["-qO-", "http://{{ include "isms-builder.fullname" . }}:{{ .Values.service.port }}/ui/login.html"]
+      {{- end }}
+  restartPolicy: Never

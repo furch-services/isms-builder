@@ -1,0 +1,24 @@
+{{- if and .Values.persistence.enabled (not .Values.persistence.existingClaim) }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "isms-builder.fullname" . }}-data
+  labels:
+    {{- include "isms-builder.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    {{- /* A PVC's accessModes are immutable in Kubernetes once created, so
+       this cannot be auto-derived from replicaCount at render time — doing
+       so would render ReadWriteOnce on a fresh single-replica install, then
+       try to (and fail to) switch to ReadWriteMany in place on a later
+       `helm upgrade --set replicaCount=N`. isms-builder.validate in
+       _helpers.tpl instead requires persistence.accessMode: ReadWriteMany
+       to already be set explicitly whenever replicaCount > 1. */}}
+    - {{ .Values.persistence.accessMode }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.size }}
+  {{- if .Values.persistence.storageClassName }}
+  storageClassName: {{ .Values.persistence.storageClassName }}
+  {{- end }}
+{{- end }}

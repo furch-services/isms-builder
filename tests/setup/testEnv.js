@@ -82,4 +82,30 @@ function removeTestDataDir(dir) {
   }
 }
 
-module.exports = { createTestDataDir, removeTestDataDir }
+// Same test roles as above in rbac_users.json — for tests that run against a
+// SQL backend (STORAGE_BACKEND sqlite/mariadb/postgres). Since the
+// rbacStore dual-mode fix, rbacStore.js no longer reads rbac_users.json
+// under these backends, only the rbac_users table — the seed users created
+// there automatically are admin/alice/bob (the production default), not the
+// editor/reader/auditor/contentowner test roles used above. Tests that need
+// one of these roles via loginAs() must additionally create it after
+// app.bootstrap() via seedDbBackendTestUsers().
+const DB_BACKEND_TEST_USERS = {
+  editor:       { email: 'editor@test.local', domain: 'IT',    role: 'editor',       password: 'editorpass'  },
+  reader:       { email: 'reader@test.local', domain: 'HR',    role: 'reader',       password: 'readerpass'  },
+  auditor:      { email: 'aud@test.local',    domain: 'Audit', role: 'auditor',      password: 'auditorpass' },
+  contentowner: { email: 'co@test.local',     domain: 'Legal', role: 'contentowner', password: 'copass'      },
+}
+
+async function seedDbBackendTestUsers() {
+  const rbacStore = require('../../server/rbacStore')
+  for (const [username, u] of Object.entries(DB_BACKEND_TEST_USERS)) {
+    try {
+      await rbacStore.createUser({ username, email: u.email, domain: u.domain, role: u.role, functions: [], password: u.password })
+    } catch (e) {
+      if (!/already exists/i.test(e.message)) throw e
+    }
+  }
+}
+
+module.exports = { createTestDataDir, removeTestDataDir, seedDbBackendTestUsers }

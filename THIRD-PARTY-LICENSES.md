@@ -81,6 +81,19 @@ All licenses are compatible with the project's AGPL-3.0 license.
 
 ---
 
+## Helm Chart Dependencies
+
+### groundhog2k/postgres
+- **Version:** 1.6.8 (bundled as an optional subchart dependency)
+- **License:** MIT
+- **Copyright:** © 2020–2026 groundhog2k
+- **Repository:** https://github.com/groundhog2k/helm-charts
+- **Note:** Only fetched/installed when `postgresql.enabled: true` (the default) in
+  `charts/isms-builder/values.yaml`. Not committed to this repository — `helm dependency build`
+  downloads it at chart-packaging time per `charts/isms-builder/Chart.lock`.
+
+---
+
 ## Development Dependencies (not included in production builds)
 
 | Package | Version | License |
