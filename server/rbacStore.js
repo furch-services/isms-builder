@@ -9,6 +9,10 @@ const DB_FILE = path.join(DB_ROOT, 'rbac_users.json')
 
 const BCRYPT_ROUNDS = 12
 
+// Read once, up front — the dual-mode switch further down needs this before
+// deciding whether to load/write this JSON file at all.
+const STORAGE_BACKEND = (process.env.STORAGE_BACKEND || 'json').toLowerCase()
+
 function ensureDir() {
   if (!fs.existsSync(DB_ROOT)) fs.mkdirSync(DB_ROOT, { recursive: true })
 }
@@ -66,7 +70,14 @@ function saveUsers(data) {
   fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2))
 }
 
-let USERS = loadUsers()
+// Only load (and, on first run, seed + write) this JSON file in JSON mode.
+// Under sqlite/mariadb/postgres, module.exports is fully replaced with the
+// Knex-backed store further down in this file and this USERS object is never
+// read again — loading it unconditionally would still write a fresh
+// rbac_users.json full of hashed default credentials onto the mounted PVC on
+// every SQL-backend boot, and worse, that stale file would silently become
+// authoritative again if STORAGE_BACKEND is ever rolled back to json.
+let USERS = STORAGE_BACKEND === 'json' ? loadUsers() : {}
 
 // Passwort eines Benutzers prüfen (async, bcrypt)
 async function verifyPassword(username, plaintext) {
@@ -206,7 +217,8 @@ const _jsonExports = {
 // one — both would see an empty table at startup and both would try to
 // insert the seed (admin/alice/bob) concurrently, and the second attempt
 // would fail with a UNIQUE constraint error on `username`.
-const STORAGE_BACKEND = (process.env.STORAGE_BACKEND || 'json').toLowerCase()
+// (STORAGE_BACKEND itself is declared once, near the top of this file — the
+// conditional `let USERS = ...` further up needs it too.)
 
 module.exports = STORAGE_BACKEND !== 'json'
   ? require('./db/stores/rbacStore')
