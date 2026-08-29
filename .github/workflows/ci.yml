@@ -138,9 +138,19 @@ jobs:
         run: |
           helm template test-external charts/isms-builder \
             --set postgresql.enabled=false --set storageBackend=postgres \
-            --set replicaCount=3 \
+            --set replicaCount=3 --set persistence.accessMode=ReadWriteMany \
             --set database.external.host=db.example.com \
             --set database.external.existingSecret=my-db-secret
+
+      - name: Template — storageBackend aliases pg/mysql must be normalized, not rejected or silently unwired
+        run: |
+          OUT="$(helm template test-alias-pg charts/isms-builder --set storageBackend=pg)"
+          echo "$OUT" | grep -q 'STORAGE_BACKEND: "postgres"' || { echo "::error::storageBackend: pg should normalize to postgres"; exit 1; }
+          OUT="$(helm template test-alias-mysql charts/isms-builder \
+            --set postgresql.enabled=false --set storageBackend=mysql \
+            --set database.external.host=db.example.com --set database.external.existingSecret=my-db-secret)"
+          echo "$OUT" | grep -q 'DB_HOST: "db.example.com"' || { echo "::error::storageBackend: mysql should still wire DB_HOST (normalizes to mariadb)"; exit 1; }
+          echo "OK: pg/mysql aliases normalized correctly"
 
       - name: Template — validation guard MUST reject replicaCount>1 with a file-based backend
         run: |
@@ -159,6 +169,24 @@ jobs:
             exit 1
           fi
           echo "OK: validation guard triggered as expected"
+
+      - name: Template — validation guard MUST reject replicaCount>1 without ReadWriteMany
+        run: |
+          if helm template test-invalid-rwo charts/isms-builder \
+              --set replicaCount=3 2>/dev/null; then
+            echo "::error::_helpers.tpl validation did not trigger (replicaCount>1 requires persistence.accessMode=ReadWriteMany, since a PVC's accessModes are immutable and cannot be auto-upgraded on helm upgrade)"
+            exit 1
+          fi
+          echo "OK: PVC accessMode guard triggered as expected"
+
+      - name: Template — validation guard MUST reject tls.inPod.enabled without a secretName
+        run: |
+          if helm template test-invalid-tls charts/isms-builder \
+              --set tls.inPod.enabled=true 2>/dev/null; then
+            echo "::error::_helpers.tpl validation did not trigger (tls.inPod.enabled requires tls.inPod.secretName)"
+            exit 1
+          fi
+          echo "OK: tls.inPod secretName guard triggered as expected"
 
   security-scan:
     name: Dependency Security Scan

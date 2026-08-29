@@ -40,9 +40,9 @@ postgresql:
     # below — the subchart's statefulset.yaml template dereferences
     # `.password.secretKey` unconditionally, which fails on a nil map.
     password: {}
-    # Name of the Kubernetes Secret holding POSTGRES_DB/USERDB_USER/
-    # USERDB_PASSWORD, shared between the isms-builder Deployment and the
-    # bundled postgres subchart. NOT release-name-templated (a plain string,
+    # Name of the Kubernetes Secret holding POSTGRES_DB/POSTGRES_PASSWORD/
+    # USERDB_USER/USERDB_PASSWORD, shared between the isms-builder Deployment
+    # and the bundled postgres subchart. NOT release-name-templated (a plain string,
     # since subchart values.yaml cannot reference .Release.Name) — override
     # this if you install more than one isms-builder release in the same
     # namespace, so each gets its own secret.
@@ -66,7 +66,7 @@ postgresql:
   # Read by THIS chart's own templates.secret.yaml, not by the subchart:
   # whether to generate the Secret named above. Set to false if you manage
   # that Secret yourself (it must then already contain POSTGRES_DB,
-  # USERDB_USER, USERDB_PASSWORD).
+  # POSTGRES_PASSWORD, USERDB_USER, USERDB_PASSWORD).
   createSecret: true
   # Leave empty to auto-generate a random password on first install, kept
   # stable across `helm upgrade` (same lookup-based mechanism as
@@ -90,11 +90,16 @@ persistence:
   enabled: true
   # ReadWriteOnce by default — the default StorageClass on EKS (gp2/gp3),
   # GKE (standard/pd-*), and AKS (managed-csi) is RWO-only, and replicaCount
-  # defaults to 1, so RWO is all a fresh install actually needs. When
-  # replicaCount > 1, templates/pvc.yaml automatically requests
-  # ReadWriteMany instead (needs an RWX-capable StorageClass/CSI driver —
-  # e.g. EFS-CSI/Filestore-CSI/Azure Files-CSI — set storageClassName below
-  # if the cluster's default StorageClass isn't RWX-capable).
+  # defaults to 1, so RWO is all a fresh install actually needs. If you plan
+  # to scale beyond one replica, set this to ReadWriteMany explicitly BEFORE
+  # your first install (needs an RWX-capable StorageClass/CSI driver — e.g.
+  # EFS-CSI/Filestore-CSI/Azure Files-CSI — set storageClassName below if the
+  # cluster's default StorageClass isn't RWX-capable): a PVC's accessModes
+  # are immutable in Kubernetes once created, so this chart cannot switch an
+  # existing ReadWriteOnce install to ReadWriteMany on a later
+  # `helm upgrade --set replicaCount=N` — it fails that render instead (see
+  # isms-builder.validate in templates/_helpers.tpl) rather than leaving you
+  # with a Deployment scaled up but unable to mount its own PVC.
   accessMode: ReadWriteOnce
   size: 10Gi
   storageClassName: ""

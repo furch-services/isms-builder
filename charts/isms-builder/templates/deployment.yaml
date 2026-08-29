@@ -38,7 +38,7 @@ spec:
                   name: {{ include "isms-builder.jwtSecretName" . }}
                   key: JWT_SECRET
             {{- /* json and sqlite need no DB credentials at all (see configmap.yaml). */}}
-            {{- if or (eq .Values.storageBackend "postgres") (eq .Values.storageBackend "mariadb") }}
+            {{- if or (eq (include "isms-builder.storageBackend" .) "postgres") (eq (include "isms-builder.storageBackend" .) "mariadb") }}
             - name: DB_PASS
               valueFrom:
                 secretKeyRef:

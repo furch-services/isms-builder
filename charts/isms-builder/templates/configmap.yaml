@@ -6,7 +6,11 @@ metadata:
     {{- include "isms-builder.labels" . | nindent 4 }}
 data:
   PORT: "3000"
-  STORAGE_BACKEND: {{ .Values.storageBackend | quote }}
+  {{- /* Normalized: the app accepts "pg"/"mysql" as aliases for "postgres"/
+     "mariadb" (server/db/knexDatabase.js), but writing the canonical name
+     here keeps it consistent with the guards below, which must also use the
+     normalized form to recognize those aliases correctly. */}}
+  STORAGE_BACKEND: {{ include "isms-builder.storageBackend" . | quote }}
   JWT_EXPIRES_IN: {{ .Values.env.jwtExpiresIn | quote }}
   # Never true here — this chart deliberately does not expose an override,
   # DEV_HEADER_AUTH bypasses password auth entirely and is dev-only.
@@ -19,7 +23,7 @@ data:
   {{- end }}
   {{- /* json and sqlite are both file-based and need no DB_* wiring at all —
      sqlite persists straight into the mounted PVC, no server/credentials. */}}
-  {{- if or (eq .Values.storageBackend "postgres") (eq .Values.storageBackend "mariadb") }}
+  {{- if or (eq (include "isms-builder.storageBackend" .) "postgres") (eq (include "isms-builder.storageBackend" .) "mariadb") }}
   DB_HOST: {{ include "isms-builder.dbHost" . | quote }}
   DB_PORT: {{ include "isms-builder.dbPort" . | quote }}
   DB_NAME: {{ include "isms-builder.dbName" . | quote }}
