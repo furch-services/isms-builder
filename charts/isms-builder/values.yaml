@@ -47,6 +47,18 @@ postgresql:
     # this if you install more than one isms-builder release in the same
     # namespace, so each gets its own secret.
     existingSecret: "isms-builder-db-credentials"
+  # Wires the subchart's own Postgres container to actually read
+  # POSTGRES_PASSWORD from the same secret referenced above — without this,
+  # the secret has the key (see templates/secret.yaml) but the subchart's own
+  # defaults for settings.existingSecret/superuserPassword are empty, so the
+  # official postgres image never receives POSTGRES_PASSWORD and fails on
+  # first init ("Database is uninitialized and superuser password is not
+  # specified"). superuserPassword.secretKey is set explicitly even though it
+  # already matches the subchart's own default key name, for clarity.
+  settings:
+    existingSecret: "isms-builder-db-credentials"
+    superuserPassword:
+      secretKey: POSTGRES_PASSWORD
   storage:
     requestedSize: 8Gi
     className: ""
